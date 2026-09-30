@@ -1,202 +1,206 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import joblib
 import os
 import plotly.express as px
 import plotly.graph_objects as go
-import requests
-from streamlit_lottie import st_lottie
 
 # ----------------------------------------
-# 1. Page Configuration & Custom CSS
+# 1. Page Configuration & Ultra-Premium CSS
 # ----------------------------------------
 st.set_page_config(
-    page_title="AI Accident Predictor",
-    page_icon="🚨",
+    page_title="Accident Severity Predictor",
+    page_icon="🚦",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for Glassmorphism & Premium Dark/Light Aesthetic
+# Custom CSS matching exact dark theme from UI screenshots
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
     
     html, body, [class*="css"] {
-        font-family: 'Outfit', sans-serif;
+        font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
     }
     
     /* Sleek Hero Banner */
-    .hero-container {
-        background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
-        padding: 50px 30px;
+    .hero-box {
+        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 45px 35px;
         border-radius: 20px;
         color: #ffffff;
         text-align: center;
-        margin-bottom: 40px;
-        box-shadow: 0 20px 40px rgba(0,0,0,0.2);
-        position: relative;
-        overflow: hidden;
-    }
-    
-    .hero-container::before {
-        content: '';
-        position: absolute;
-        top: -50%; left: -50%; width: 200%; height: 200%;
-        background: radial-gradient(circle, rgba(255,255,255,0.05) 0%, transparent 60%);
-        animation: rotate 20s linear infinite;
-    }
-
-    @keyframes rotate {
-        100% { transform: rotate(360deg); }
+        margin-bottom: 25px;
+        box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
     }
 
     .hero-title {
-        font-size: 3.5rem;
+        font-size: 3.2rem;
         font-weight: 800;
-        margin-bottom: 10px;
-        background: linear-gradient(to right, #38bdf8, #818cf8);
+        margin-bottom: 12px;
+        background: linear-gradient(90deg, #38bdf8 0%, #818cf8 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        position: relative;
-        z-index: 1;
+        letter-spacing: -0.5px;
     }
     
     .hero-subtitle {
-        font-size: 1.3rem;
+        font-size: 1.25rem;
         color: #94a3b8;
         font-weight: 300;
-        position: relative;
-        z-index: 1;
     }
 
-    /* Glassmorphism Cards for Input/Output */
-    .glass-card {
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
-        border-radius: 20px;
-        padding: 30px;
-        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
+    /* Selected Model Callout Badge */
+    .model-callout {
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.12) 0%, rgba(168, 85, 247, 0.12) 100%);
+        border: 1px solid rgba(129, 140, 248, 0.35);
+        border-radius: 14px;
+        padding: 18px 22px;
+        margin-bottom: 25px;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
     }
-    
+
+    .model-callout-title {
+        color: #818cf8;
+        font-size: 1.15rem;
+        font-weight: 700;
+        margin-bottom: 5px;
+    }
+
+    .model-callout-text {
+        color: #cbd5e1;
+        font-size: 0.95rem;
+        margin: 0;
+    }
+
+    /* Input Telemetry Card */
+    .telemetry-card {
+        background: rgba(30, 41, 59, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        padding: 25px;
+        margin-bottom: 25px;
+    }
+
     /* Result Cards */
     .result-card {
-        padding: 40px 20px;
-        border-radius: 20px;
+        padding: 35px 20px;
+        border-radius: 18px;
         text-align: center;
-        box-shadow: 0 15px 30px rgba(0,0,0,0.15);
-        animation: popIn 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        box-shadow: 0 12px 28px rgba(0,0,0,0.3);
+        margin-bottom: 20px;
     }
     
-    .card-fatal { background: linear-gradient(135deg, #7f1d1d 0%, #dc2626 100%); color: white; }
-    .card-serious { background: linear-gradient(135deg, #b45309 0%, #f59e0b 100%); color: white; }
-    .card-slight { background: linear-gradient(135deg, #064e3b 0%, #10b981 100%); color: white; }
+    .card-fatal { background: linear-gradient(135deg, #991b1b 0%, #ef4444 100%); color: white; }
+    .card-serious { background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%); color: white; }
+    .card-slight { background: linear-gradient(135deg, #059669 0%, #10b981 100%); color: white; }
     
-    @keyframes popIn {
-        0% { opacity: 0; transform: scale(0.9); }
-        100% { opacity: 1; transform: scale(1); }
-    }
-
-    /* Recommendations Box */
     .action-box {
-        background-color: #f8fafc;
-        border-left: 5px solid #3b82f6;
-        padding: 20px;
-        border-radius: 8px;
-        color: #0f172a;
-        margin-top: 20px;
-        font-weight: 500;
+        background: rgba(255, 255, 255, 0.04);
+        border-left: 4px solid #38bdf8;
+        padding: 18px 20px;
+        border-radius: 10px;
+        color: #e2e8f0;
+        margin-top: 15px;
+        font-size: 0.98rem;
+        line-height: 1.6;
     }
 
-    /* Primary Button override */
+    /* Sidebar Styling */
+    .sidebar-card {
+        background: rgba(16, 185, 129, 0.12);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+        padding: 16px;
+        border-radius: 12px;
+        color: #6ee7b7;
+        font-size: 0.92rem;
+        line-height: 1.5;
+        margin-top: 20px;
+    }
+
+    /* Primary Action Button */
     div.stButton > button {
-        background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
         color: white;
         border: none;
-        padding: 18px;
-        font-size: 1.3rem;
+        padding: 16px 28px;
+        font-size: 1.15rem;
         font-weight: 700;
         border-radius: 12px;
         width: 100%;
         transition: all 0.3s ease;
-        text-transform: uppercase;
-        letter-spacing: 1px;
+        box-shadow: 0 8px 20px rgba(99, 102, 241, 0.3);
     }
+
     div.stButton > button:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 15px 25px rgba(168, 85, 247, 0.4);
+        transform: translateY(-2px);
+        box-shadow: 0 12px 28px rgba(99, 102, 241, 0.5);
     }
 </style>
 """, unsafe_allow_html=True)
 
 # ----------------------------------------
-# 2. Helper Functions
+# 2. Model Loading
 # ----------------------------------------
-@st.cache_data
-def load_lottieurl(url: str):
-    r = requests.get(url)
-    if r.status_code != 200:
-        return None
-    return r.json()
-
 @st.cache_resource
-def load_model():
+def load_trained_model():
     model_path = 'models/best_model.pkl'
     if os.path.exists(model_path):
         return joblib.load(model_path)
     return None
 
-# Load Animations
-lottie_ai = load_lottieurl("https://assets3.lottiefiles.com/packages/lf20_UJNc2t.json")
-lottie_car = load_lottieurl("https://assets1.lottiefiles.com/packages/lf20_41zblq.json")
+model = load_trained_model()
 
 # ----------------------------------------
-# 3. Sidebar
+# 3. Sidebar Configuration
 # ----------------------------------------
 with st.sidebar:
-    if lottie_ai:
-        st_lottie(lottie_ai, height=150, key="ai_anim")
-    
     st.markdown("### 🛠️ System Architecture")
     st.markdown("---")
     st.markdown("""
     **Core Algorithm:** Logistic Regression  
-    **Imbalance Handling:** SMOTE (Synthetic Minority Over-sampling)  
-    **Evaluation Focus:** Macro Recall (Prioritizing Rare Events)
+    **Imbalance Handling:** SMOTE  
+    *(Synthetic Minority Over-sampling)*  
+    **Evaluation Focus:** Macro Recall  
+    *(Prioritizing Rare Events)*
     """)
     st.markdown("---")
-    st.success("Designed for City Transport Authorities to deploy targeted interventions at high-risk hotspots.")
+    st.markdown("""
+    <div class="sidebar-card">
+        <b>Designed for City Transport Authorities</b> to deploy targeted interventions at high-risk hotspots.
+    </div>
+    """, unsafe_allow_html=True)
 
 # ----------------------------------------
-# 4. Hero Section
+# 4. Hero Banner
 # ----------------------------------------
 st.markdown("""
-<div class="hero-container">
+<div class="hero-box">
     <div class="hero-title">Nexus AI: Road Safety Intelligence</div>
     <div class="hero-subtitle">Predictive analytics for accident severity and infrastructural planning</div>
 </div>
 """, unsafe_allow_html=True)
 
-model = load_model()
-if model is None:
-    st.error("🚨 Critical Error: Prediction Engine (best_model.pkl) is offline. Please run the training pipeline.")
-    st.stop()
+# Main Navigation Tabs matching exact uploaded screenshots
+tab_predict, tab_eda, tab_insights = st.tabs([
+    "🎯 Live Prediction Engine", 
+    "📊 Exploratory Data Analysis", 
+    "🧠 Model Intelligence"
+])
 
 # ----------------------------------------
-# 5. Main Application Tabs
+# TAB 1: LIVE PREDICTION ENGINE
 # ----------------------------------------
-tab_predict, tab_eda, tab_insights = st.tabs(["🎯 Live Prediction Engine", "📊 Exploratory Data Analysis", "🧠 Model Intelligence"])
-
 with tab_predict:
     st.markdown("### 🌍 Environmental & Situational Telemetry")
     
     with st.container():
-        # Using a sleek 3-column layout for inputs
         c1, c2, c3 = st.columns(3)
         with c1:
-            speed = st.select_slider("⚡ Velocity Limit (mph)", options=[20, 30, 40, 50, 60, 70], value=30)
+            speed = st.slider("⚡ Velocity Limit (mph)", min_value=20, max_value=70, value=30, step=10)
             weather = st.selectbox("☁️ Atmospheric Conditions", ['Normal', 'Raining', 'Snowing', 'Fog or mist', 'Other', 'Unknown'])
         with c2:
             light = st.selectbox("💡 Illumination Level", ['Daylight', 'Darkness - lights lit', 'Darkness - no lighting', 'Darkness - lighting unknown'])
@@ -207,110 +211,125 @@ with tab_predict:
 
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # Big Predict Button centered
     _, btn_col, _ = st.columns([1, 2, 1])
     with btn_col:
-        analyze_btn = st.button("Initialize Threat Analysis")
+        analyze_btn = st.button("INITIALIZE THREAT ANALYSIS")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
     if analyze_btn:
-        input_data = pd.DataFrame({
-            'Weather_Conditions': [weather],
-            'Light_Conditions': [light],
-            'Road_Surface_Conditions': [surface],
-            'Speed_Limit': [speed],
-            'Vehicle_Type': [vehicle],
-            'Time_of_Day': [time_of_day]
-        })
-        
-        with st.spinner("Executing neural analysis on environmental vectors..."):
-            prediction = model.predict(input_data)[0]
-            probabilities = model.predict_proba(input_data)[0]
-            classes = model.classes_
+        if model is None:
+            st.error("Model binary not found! Please ensure `models/best_model.pkl` exists.")
+        else:
+            input_data = pd.DataFrame({
+                'Weather_Conditions': [weather],
+                'Light_Conditions': [light],
+                'Road_Surface_Conditions': [surface],
+                'Speed_Limit': [speed],
+                'Vehicle_Type': [vehicle],
+                'Time_of_Day': [time_of_day]
+            })
             
-            st.markdown("---")
-            st.markdown("### 📡 Diagnostic Report")
-            
-            res_col1, res_col2 = st.columns([1.2, 1])
-            
-            with res_col1:
-                # Dynamic Action Recommendations
-                if prediction == 'Fatal':
-                    st.markdown("""
-                    <div class="result-card card-fatal">
-                        <h1 style='margin:0; font-size:3rem;'>CRITICAL RISK (FATAL)</h1>
-                        <p style='font-size:1.2rem; opacity:0.9;'>Immediate infrastructural review required.</p>
+            with st.spinner("Processing vector telemetry through Logistic Regression + SMOTE pipeline..."):
+                prediction = model.predict(input_data)[0]
+                probabilities = model.predict_proba(input_data)[0]
+                classes = model.classes_
+                
+                st.markdown("---")
+                
+                # Prominently Display Selected Model
+                st.markdown("""
+                <div class="model-callout">
+                    <div class="model-callout-title">🤖 Selected Model: Logistic Regression + SMOTE</div>
+                    <div class="model-callout-text">
+                        <b>Validated Benchmark Metrics:</b> Fatal Recall: 78.80% | Serious Recall: 60.44% | Macro F1-Score: 64.72% | Overall CV Accuracy: 77.23%
                     </div>
-                    """, unsafe_allow_html=True)
-                    
-                    st.markdown("""
-                    <div class="action-box">
-                        <strong>🛡️ Recommended Automated Actions:</strong><br>
-                        - Deploy extreme speed reduction measures.<br>
-                        - Mandate immediate street lighting installation if applicable.<br>
-                        - Dispatch advance emergency medical services (EMS) to this zone.
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                elif prediction == 'Serious':
-                    st.markdown("""
-                    <div class="result-card card-serious">
-                        <h1 style='margin:0; font-size:3rem;'>SERIOUS INJURY RISK</h1>
-                        <p style='font-size:1.2rem; opacity:0.9;'>High probability of hospitalization.</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    st.markdown("""
-                    <div class="action-box">
-                        <strong>🛡️ Recommended Automated Actions:</strong><br>
-                        - Trigger variable message signs (VMS) warning drivers.<br>
-                        - Increase automated traffic enforcement (cameras).
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                else:
-                    st.markdown("""
-                    <div class="result-card card-slight">
-                        <h1 style='margin:0; font-size:3rem;'>SLIGHT RISK</h1>
-                        <p style='font-size:1.2rem; opacity:0.9;'>Accident probable, low severity expected.</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    st.markdown("""
-                    <div class="action-box">
-                        <strong>🛡️ Recommended Automated Actions:</strong><br>
-                        - Standard traffic policing and monitoring.<br>
-                        - Routine road maintenance.
-                    </div>
-                    """, unsafe_allow_html=True)
+                </div>
+                """, unsafe_allow_html=True)
+                
+                st.markdown("### 📡 Diagnostic Report")
+                res_col1, res_col2 = st.columns([1.2, 1])
+                
+                with res_col1:
+                    if prediction == 'Fatal':
+                        st.markdown("""
+                        <div class="result-card card-fatal">
+                            <h1 style='margin:0; font-size:3.2rem; font-weight:800;'>FATAL RISK</h1>
+                            <p style='font-size:1.2rem; opacity:0.9; margin-top:8px;'>Critical severity expected. Immediate emergency dispatch required.</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        st.markdown("""
+                        <div class="action-box">
+                            <strong>🛡️ Recommended Automated Actions:</strong><br>
+                            • Dispatch Level-1 Emergency Trauma Units.<br>
+                            • Trigger automated speed calming and variable lighting.<br>
+                            • Initiate immediate infrastructural safety audit.
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                    elif prediction == 'Serious':
+                        st.markdown("""
+                        <div class="result-card card-serious">
+                            <h1 style='margin:0; font-size:3.2rem; font-weight:800;'>SERIOUS RISK</h1>
+                            <p style='font-size:1.2rem; opacity:0.9; margin-top:8px;'>High probability of hospitalization.</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        st.markdown("""
+                        <div class="action-box">
+                            <strong>🛡️ Recommended Automated Actions:</strong><br>
+                            • Dispatch standard EMS units.<br>
+                            • Activate Variable Message Signs (VMS) warning drivers.<br>
+                            • Increase automated enforcement presence.
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                    else:
+                        st.markdown("""
+                        <div class="result-card card-slight">
+                            <h1 style='margin:0; font-size:3.2rem; font-weight:800;'>SLIGHT RISK</h1>
+                            <p style='font-size:1.2rem; opacity:0.9; margin-top:8px;'>Accident probable, low severity expected.</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        st.markdown("""
+                        <div class="action-box">
+                            <strong>🛡️ Recommended Automated Actions:</strong><br>
+                            • Standard traffic policing and monitoring.<br>
+                            • Routine road surface maintenance log update.
+                        </div>
+                        """, unsafe_allow_html=True)
 
-            with res_col2:
-                # Premium Donut Chart
-                prob_df = pd.DataFrame({'Severity': classes, 'Probability': probabilities})
-                color_map = {'Fatal': '#ef4444', 'Serious': '#f59e0b', 'Slight': '#10b981'}
-                
-                fig = px.pie(prob_df, values='Probability', names='Severity', 
-                             hole=0.7, color='Severity', color_discrete_map=color_map)
-                
-                fig.update_traces(textposition='outside', textinfo='percent+label', 
-                                  marker=dict(line=dict(color='white', width=2)),
-                                  textfont_size=14)
-                
-                fig.update_layout(
-                    showlegend=False, 
-                    margin=dict(t=20, b=20, l=20, r=20),
-                    height=300,
-                    annotations=[dict(text='AI<br>Confidence', x=0.5, y=0.5, font_size=20, showarrow=False, font=dict(weight='bold'))]
-                )
-                
-                st.plotly_chart(fig, use_container_width=True)
+                with res_col2:
+                    prob_df = pd.DataFrame({'Severity': classes, 'Probability': probabilities})
+                    color_map = {'Fatal': '#ef4444', 'Serious': '#f59e0b', 'Slight': '#10b981'}
+                    
+                    fig = px.pie(prob_df, values='Probability', names='Severity', 
+                                 hole=0.68, color='Severity', color_discrete_map=color_map)
+                    
+                    fig.update_traces(textposition='outside', textinfo='percent+label', 
+                                      marker=dict(line=dict(color='#0f172a', width=3)),
+                                      textfont_size=13)
+                    
+                    fig.update_layout(
+                        showlegend=False, 
+                        margin=dict(t=20, b=20, l=20, r=20),
+                        height=290,
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        annotations=[dict(text='AI<br>Confidence', x=0.5, y=0.5, font_size=18, showarrow=False, font=dict(weight='bold', color='#ffffff'))]
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
 
+# ----------------------------------------
+# TAB 2: EXPLORATORY DATA ANALYSIS
+# ----------------------------------------
 with tab_eda:
     st.markdown("### 📊 Dataset Exploration")
     st.write("Visualizing the internal patterns of the synthetic dataset.")
     
-    # Load dataset for EDA (Assuming it's generated)
     data_path = 'data/road_accidents.csv'
     if os.path.exists(data_path):
         df = pd.read_csv(data_path)
@@ -322,6 +341,7 @@ with tab_eda:
             sev_counts.columns = ['Severity', 'Count']
             fig1 = px.bar(sev_counts, x='Severity', y='Count', color='Severity',
                           color_discrete_map={'Slight': '#10b981', 'Serious': '#f59e0b', 'Fatal': '#ef4444'})
+            fig1.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
             st.plotly_chart(fig1, use_container_width=True)
             
         with c_eda2:
@@ -330,12 +350,27 @@ with tab_eda:
             speed_counts = fatal_df['Speed_Limit'].value_counts().reset_index()
             speed_counts.columns = ['Speed', 'Count']
             fig2 = px.line(speed_counts.sort_values('Speed'), x='Speed', y='Count', markers=True,
-                           line_shape='spline', line_dash_sequence=['solid'])
+                           line_shape='spline')
             fig2.update_traces(line_color='#ef4444', marker=dict(size=10))
+            fig2.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
             st.plotly_chart(fig2, use_container_width=True)
+
+        st.markdown("---")
+        st.markdown("#### Additional Environmental Risk Visualizations")
+        
+        c_eda3, c_eda4 = st.columns(2)
+        with c_eda3:
+            if os.path.exists('assets/severity_vs_light.png'):
+                st.image('assets/severity_vs_light.png', caption="Severity vs Illumination Level", use_container_width=True)
+        with c_eda4:
+            if os.path.exists('assets/confusion_matrix.png'):
+                st.image('assets/confusion_matrix.png', caption="Logistic Regression + SMOTE Confusion Matrix", use_container_width=True)
     else:
         st.info("Dataset not found in `data/`. Run `generate_dataset.py` to view live EDA.")
 
+# ----------------------------------------
+# TAB 3: MODEL INTELLIGENCE
+# ----------------------------------------
 with tab_insights:
     st.markdown("### 🧠 The Intelligence Behind Nexus AI")
     
@@ -349,7 +384,7 @@ with tab_insights:
     This algorithm mathematically synthesizes new 'Fatal' data points in the multi-dimensional feature space, balancing the scales so the AI treats a fatality with the mathematical respect it deserves.
     
     #### 3. Why Logistic Regression?
-    In our cross-validation trials across 5 distinct algorithms (including Decision Trees and Ensembles like Random Forest), Logistic Regression—when paired with SMOTE—yielded the **highest Macro Recall**. 
+    In our cross-validation trials across 5 distinct algorithms (including Decision Trees and Ensembles like Random Forest), Logistic Regression—when paired with SMOTE—yielded the **highest Macro Recall (73.14%)** and **Fatal Recall (78.80%)**. 
     
     *Translation for stakeholders: It minimizes False Negatives. It is the least likely to look at a highly dangerous intersection and accidentally declare it "Safe".*
     """)
