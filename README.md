@@ -13,6 +13,7 @@
 ## 📌 Project Overview
 **Nexus AI** is an intelligent web-based decision support system designed to predict the severity of road traffic accidents (**Slight**, **Serious**, or **Fatal**) based on environmental, temporal, and infrastructural parameters. Built specifically for transport safety authorities and urban planners, the system uses **SMOTE oversampling** and **Logistic Regression** to maximize the detection of fatal collisions.
 
+This is the deploy link : https://ml-roadaccidentseverity-21.streamlit.app/
 ---
 
 ## 📸 Verified Localhost Application Screenshots
